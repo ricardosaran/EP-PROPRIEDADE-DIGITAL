@@ -82,49 +82,56 @@ try:
     else:
         st.warning(f"Não há dados de 'Níveis' para o grupo '{grupo_selecionado}'.")
 
-    # --- INÍCIO DO NOVO GRÁFICO ---
-    st.header("Comparativo de Pontuação Média por Grupo")
+    # --- PREPARAÇÃO DOS DADOS PARA GRÁFICOS COMPARATIVOS ---
+    # Calcula a contagem de participantes uma vez para ser reutilizada
+    participant_counts = comparativo_df['Grupo'].value_counts()
 
-    # Agrega os dados para calcular a média por grupo, usando o dataframe completo
+
+    # --- GRÁFICO DE PONTUAÇÃO MÉDIA ---
+    st.header("Comparativo de Pontuação Média por Grupo")
+    
     pontuacao_por_grupo_df = comparativo_df.groupby('Grupo')[['Pontuação Inicial', 'Pontuação Final']].mean().reset_index()
+    # Adiciona a contagem ao nome do grupo para usar como rótulo no gráfico
+    pontuacao_por_grupo_df['Grupo_com_contagem'] = pontuacao_por_grupo_df['Grupo'].apply(
+        lambda grupo: f"{grupo} (N={participant_counts.get(grupo, 0)})"
+    )
 
     escolha_pontuacao = st.radio(
         "Selecione a visualização de pontuação:",
         ('Pontuação Final', 'Pontuação Inicial', 'Ambas'),
         horizontal=True,
-        key='pontuacao_radio' # Chave única para este conjunto de botões
+        key='pontuacao_radio'
     )
 
     fig_pontuacao = None
     if escolha_pontuacao == 'Pontuação Final':
-        fig_pontuacao = px.bar(pontuacao_por_grupo_df, x="Grupo", y='Pontuação Final',
+        fig_pontuacao = px.bar(pontuacao_por_grupo_df, x="Grupo_com_contagem", y='Pontuação Final',
                                 title="Pontuação Média Final por Grupo",
-                                labels={'Pontuação Final': "Pontuação Média", "Grupo": "Grupo"},
-                                text_auto='.2f') # Formata o texto para 2 casas decimais
+                                labels={'Pontuação Final': "Pontuação Média", "Grupo_com_contagem": "Grupo"},
+                                text_auto='.2f')
     elif escolha_pontuacao == 'Pontuação Inicial':
-        fig_pontuacao = px.bar(pontuacao_por_grupo_df, x="Grupo", y='Pontuação Inicial',
+        fig_pontuacao = px.bar(pontuacao_por_grupo_df, x="Grupo_com_contagem", y='Pontuação Inicial',
                                 title="Pontuação Média Inicial por Grupo",
-                                labels={'Pontuação Inicial': "Pontuação Média", "Grupo": "Grupo"},
+                                labels={'Pontuação Inicial': "Pontuação Média", "Grupo_com_contagem": "Grupo"},
                                 text_auto='.2f')
     elif escolha_pontuacao == 'Ambas':
         pontuacao_melted_df = pontuacao_por_grupo_df.melt(
-            id_vars='Grupo',
+            id_vars=['Grupo', 'Grupo_com_contagem'],
             value_vars=['Pontuação Inicial', 'Pontuação Final'],
             var_name='Tipo de Pontuação',
-            value_name='Média'
+            value_name='Pontuação Média'
         )
-        fig_pontuacao = px.bar(pontuacao_melted_df, x="Grupo", y='Média', color='Tipo de Pontuação',
+        fig_pontuacao = px.bar(pontuacao_melted_df, x="Grupo_com_contagem", y='Pontuação Média', color='Tipo de Pontuação',
                                 barmode='group',
                                 title="Comparativo: Pontuação Média Inicial vs. Final",
-                                labels={'Média': "Pontuação Média", "Grupo": "Grupo", "Tipo de Pontuação": "Tipo"},
+                                labels={'Pontuação Média': "Média da Pontuação", "Grupo_com_contagem": "Grupo", "Tipo de Pontuação": "Tipo"},
                                 text_auto='.2f')
 
     if fig_pontuacao:
         st.plotly_chart(fig_pontuacao, use_container_width=True)
     else:
         st.warning("Não foi possível gerar o gráfico de pontuação.")
-    # --- FIM DO NOVO GRÁFICO ---
-        
+    
 
     # --- Análise Financeira ---
     st.header("Análise Financeira")
@@ -132,10 +139,14 @@ try:
         "Selecione a visualização financeira:",
         ('Soma Final', 'Soma Inicial', 'Ambas'),
         horizontal=True,
-        key='financeiro_radio' # Chave única para este conjunto de botões
+        key='financeiro_radio'
     )
 
     financeiro_grupos_df = financeiro_df[financeiro_df["Grupo"] != "TOTAL"].copy()
+    # Adiciona a contagem ao nome do grupo para usar como rótulo no gráfico
+    financeiro_grupos_df['Grupo_com_contagem'] = financeiro_grupos_df['Grupo'].apply(
+        lambda grupo: f"{grupo} (N={participant_counts.get(grupo, 0)})"
+    )
     
     coluna_soma_final = "Soma Final"
 
@@ -148,30 +159,30 @@ try:
     if escolha_financeiro == 'Soma Final':
         if coluna_soma_final in financeiro_grupos_df.columns:
             financeiro_grupos_df.dropna(subset=[coluna_soma_final], inplace=True)
-            fig_financeiro = px.bar(financeiro_grupos_df, x="Grupo", y=coluna_soma_final,
+            fig_financeiro = px.bar(financeiro_grupos_df, x="Grupo_com_contagem", y=coluna_soma_final,
                                     title="Soma Final Financeira por Grupo",
-                                    labels={coluna_soma_final: "Soma Final", "Grupo": "Grupo"},
+                                    labels={coluna_soma_final: "Soma Final", "Grupo_com_contagem": "Grupo"},
                                     text_auto=True)
     elif escolha_financeiro == 'Soma Inicial':
         if 'Soma Inicial' in financeiro_grupos_df.columns:
             financeiro_grupos_df.dropna(subset=['Soma Inicial'], inplace=True)
-            fig_financeiro = px.bar(financeiro_grupos_df, x="Grupo", y='Soma Inicial',
+            fig_financeiro = px.bar(financeiro_grupos_df, x="Grupo_com_contagem", y='Soma Inicial',
                                     title="Soma Inicial Financeira por Grupo",
-                                    labels={'Soma Inicial': "Soma Inicial", "Grupo": "Grupo"},
+                                    labels={'Soma Inicial': "Soma Inicial", "Grupo_com_contagem": "Grupo"},
                                     text_auto=True)
     elif escolha_financeiro == 'Ambas':
         if 'Soma Inicial' in financeiro_grupos_df.columns and coluna_soma_final in financeiro_grupos_df.columns:
             financeiro_melted_df = financeiro_grupos_df.melt(
-                id_vars='Grupo',
+                id_vars=['Grupo', 'Grupo_com_contagem'],
                 value_vars=['Soma Inicial', coluna_soma_final],
                 var_name='Tipo de Soma',
                 value_name='Valor'
             )
             financeiro_melted_df.dropna(subset=['Valor'], inplace=True)
-            fig_financeiro = px.bar(financeiro_melted_df, x="Grupo", y='Valor', color='Tipo de Soma',
+            fig_financeiro = px.bar(financeiro_melted_df, x="Grupo_com_contagem", y='Valor', color='Tipo de Soma',
                                     barmode='group',
                                     title="Comparativo: Soma Inicial vs. Soma Final",
-                                    labels={'Valor': "Valor", "Grupo": "Grupo", "Tipo de Soma": "Tipo"},
+                                    labels={'Valor': "Valor", "Grupo_com_contagem": "Grupo", "Tipo de Soma": "Tipo"},
                                     text_auto=True)
 
     if fig_financeiro is not None:
