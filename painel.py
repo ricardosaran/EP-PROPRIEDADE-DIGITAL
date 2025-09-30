@@ -17,6 +17,13 @@ def load_data():
     comparativo_df = pd.read_excel(excel_file_path, sheet_name="comparativo_master")
     niveis_df = pd.read_excel(excel_file_path, sheet_name="niveis_master")
     financeiro_df = pd.read_excel(excel_file_path, sheet_name="financeiro_master")
+
+    # --- CORREÇÃO APLICADA AQUI ---
+    # Limpa espaços em branco no início e fim dos nomes de todas as colunas
+    comparativo_df.columns = comparativo_df.columns.str.strip()
+    niveis_df.columns = niveis_df.columns.str.strip()
+    financeiro_df.columns = financeiro_df.columns.str.strip()
+
     return comparativo_df, niveis_df, financeiro_df
 
 try:
@@ -63,15 +70,13 @@ try:
         fig_niveis = px.bar(niveis_chart_df, x="Nível", y="Quantidade", color="Tipo", barmode="group",
                             title=f"Distribuição de Níveis - {grupo_selecionado}",
                             labels={"Quantidade": "Número de Participantes", "Nível": "Nível de Conhecimento", "Tipo": "Medição"},
-                            text_auto=True) # Adicionado para mostrar valores nas barras
+                            text_auto=True)
         st.plotly_chart(fig_niveis, use_container_width=True)
     else:
         st.warning(f"Não há dados de 'Níveis' para o grupo '{grupo_selecionado}'.")
 
     # --- Análise Financeira ---
     st.header("Análise Financeira")
-
-    # --- ATUALIZAÇÃO 1: BOTÕES DE SELEÇÃO ---
     escolha_financeiro = st.radio(
         "Selecione a visualização financeira:",
         ('Soma Final', 'Soma Inicial', 'Ambas'),
@@ -80,8 +85,10 @@ try:
 
     financeiro_grupos_df = financeiro_df[financeiro_df["Grupo"] != "TOTAL"].copy()
     
+    # Com os nomes das colunas limpos, podemos referenciá-los com segurança
+    coluna_soma_final = "Soma Final"
+
     # Preenchendo dados faltantes de forma inteligente
-    coluna_soma_final = "Soma Final " if "Soma Final " in financeiro_grupos_df.columns else "Soma Final"
     if 'Evolução Absoluta' in financeiro_grupos_df.columns and coluna_soma_final in financeiro_grupos_df.columns:
         financeiro_grupos_df[coluna_soma_final].fillna(financeiro_grupos_df['Evolução Absoluta'], inplace=True)
     if 'Soma Inicial' in financeiro_grupos_df.columns and 'Soma Inicial (todos)' in financeiro_grupos_df.columns:
@@ -89,36 +96,38 @@ try:
 
     fig_financeiro = None
     if escolha_financeiro == 'Soma Final':
-        financeiro_grupos_df.dropna(subset=[coluna_soma_final], inplace=True)
-        fig_financeiro = px.bar(financeiro_grupos_df, x="Grupo", y=coluna_soma_final,
-                                title="Soma Final Financeira por Grupo",
-                                labels={coluna_soma_final: "Soma Final", "Grupo": "Grupo"},
-                                text_auto=True) # --- ATUALIZAÇÃO 2: NÚMEROS NAS BARRAS ---
+        if coluna_soma_final in financeiro_grupos_df.columns:
+            financeiro_grupos_df.dropna(subset=[coluna_soma_final], inplace=True)
+            fig_financeiro = px.bar(financeiro_grupos_df, x="Grupo", y=coluna_soma_final,
+                                    title="Soma Final Financeira por Grupo",
+                                    labels={coluna_soma_final: "Soma Final", "Grupo": "Grupo"},
+                                    text_auto=True)
     elif escolha_financeiro == 'Soma Inicial':
-        financeiro_grupos_df.dropna(subset=['Soma Inicial'], inplace=True)
-        fig_financeiro = px.bar(financeiro_grupos_df, x="Grupo", y='Soma Inicial',
-                                title="Soma Inicial Financeira por Grupo",
-                                labels={'Soma Inicial': "Soma Inicial", "Grupo": "Grupo"},
-                                text_auto=True) # --- ATUALIZAÇÃO 2: NÚMEROS NAS BARRAS ---
+        if 'Soma Inicial' in financeiro_grupos_df.columns:
+            financeiro_grupos_df.dropna(subset=['Soma Inicial'], inplace=True)
+            fig_financeiro = px.bar(financeiro_grupos_df, x="Grupo", y='Soma Inicial',
+                                    title="Soma Inicial Financeira por Grupo",
+                                    labels={'Soma Inicial': "Soma Inicial", "Grupo": "Grupo"},
+                                    text_auto=True)
     elif escolha_financeiro == 'Ambas':
-        financeiro_melted_df = financeiro_grupos_df.melt(
-            id_vars='Grupo',
-            value_vars=['Soma Inicial', coluna_soma_final],
-            var_name='Tipo de Soma',
-            value_name='Valor'
-        )
-        financeiro_melted_df.dropna(subset=['Valor'], inplace=True)
-        fig_financeiro = px.bar(financeiro_melted_df, x="Grupo", y='Valor', color='Tipo de Soma',
-                                barmode='group',
-                                title="Comparativo: Soma Inicial vs. Soma Final",
-                                labels={'Valor': "Valor", "Grupo": "Grupo", "Tipo de Soma": "Tipo"},
-                                text_auto=True) # --- ATUALIZAÇÃO 2: NÚMEROS NAS BARRAS ---
+        if 'Soma Inicial' in financeiro_grupos_df.columns and coluna_soma_final in financeiro_grupos_df.columns:
+            financeiro_melted_df = financeiro_grupos_df.melt(
+                id_vars='Grupo',
+                value_vars=['Soma Inicial', coluna_soma_final],
+                var_name='Tipo de Soma',
+                value_name='Valor'
+            )
+            financeiro_melted_df.dropna(subset=['Valor'], inplace=True)
+            fig_financeiro = px.bar(financeiro_melted_df, x="Grupo", y='Valor', color='Tipo de Soma',
+                                    barmode='group',
+                                    title="Comparativo: Soma Inicial vs. Soma Final",
+                                    labels={'Valor': "Valor", "Grupo": "Grupo", "Tipo de Soma": "Tipo"},
+                                    text_auto=True)
 
     if fig_financeiro:
         st.plotly_chart(fig_financeiro, use_container_width=True)
     else:
-        st.warning("Não foi possível gerar o gráfico financeiro com os dados atuais.")
-
+        st.warning("Não foi possível gerar o gráfico financeiro. Verifique se as colunas necessárias existem e se há dados para a seleção feita.")
 
     # --- Detalhes por Participante ---
     st.header("Detalhes por Participante")
