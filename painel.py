@@ -1,8 +1,15 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import os
 import numpy as np
+
+# Tenta importar o Plotly e fornece uma mensagem de erro clara se falhar
+try:
+    import plotly.express as px
+except ImportError:
+    st.error("Pacote 'plotly' não está instalado no ambiente. Adicione 'plotly' ao requirements.txt ou rode 'pip install plotly'.")
+    st.stop()
+
 
 # Configuração da página
 st.set_page_config(layout="wide")
@@ -18,7 +25,6 @@ def load_data():
     niveis_df = pd.read_excel(excel_file_path, sheet_name="niveis_master")
     financeiro_df = pd.read_excel(excel_file_path, sheet_name="financeiro_master")
 
-    # --- CORREÇÃO APLICADA AQUI ---
     # Limpa espaços em branco no início e fim dos nomes de todas as colunas
     comparativo_df.columns = comparativo_df.columns.str.strip()
     niveis_df.columns = niveis_df.columns.str.strip()
@@ -48,6 +54,7 @@ try:
 
     # --- Análise Geral ---
     st.header("Análise Geral")
+    st.subheader(f"Exibindo resultados para: {grupo_selecionado}")
     col1, col2, col3 = st.columns(3)
     media_inicial = comparativo_filtrado_df['Pontuação Inicial'].mean()
     media_final = comparativo_filtrado_df['Pontuação Final'].mean()
@@ -75,20 +82,63 @@ try:
     else:
         st.warning(f"Não há dados de 'Níveis' para o grupo '{grupo_selecionado}'.")
 
+    # --- INÍCIO DO NOVO GRÁFICO ---
+    st.header("Comparativo de Pontuação Média por Grupo")
+
+    # Agrega os dados para calcular a média por grupo, usando o dataframe completo
+    pontuacao_por_grupo_df = comparativo_df.groupby('Grupo')[['Pontuação Inicial', 'Pontuação Final']].mean().reset_index()
+
+    escolha_pontuacao = st.radio(
+        "Selecione a visualização de pontuação:",
+        ('Pontuação Final', 'Pontuação Inicial', 'Ambas'),
+        horizontal=True,
+        key='pontuacao_radio' # Chave única para este conjunto de botões
+    )
+
+    fig_pontuacao = None
+    if escolha_pontuacao == 'Pontuação Final':
+        fig_pontuacao = px.bar(pontuacao_por_grupo_df, x="Grupo", y='Pontuação Final',
+                                title="Pontuação Média Final por Grupo",
+                                labels={'Pontuação Final': "Pontuação Média", "Grupo": "Grupo"},
+                                text_auto='.2f') # Formata o texto para 2 casas decimais
+    elif escolha_pontuacao == 'Pontuação Inicial':
+        fig_pontuacao = px.bar(pontuacao_por_grupo_df, x="Grupo", y='Pontuação Inicial',
+                                title="Pontuação Média Inicial por Grupo",
+                                labels={'Pontuação Inicial': "Pontuação Média", "Grupo": "Grupo"},
+                                text_auto='.2f')
+    elif escolha_pontuacao == 'Ambas':
+        pontuacao_melted_df = pontuacao_por_grupo_df.melt(
+            id_vars='Grupo',
+            value_vars=['Pontuação Inicial', 'Pontuação Final'],
+            var_name='Tipo de Pontuação',
+            value_name='Média'
+        )
+        fig_pontuacao = px.bar(pontuacao_melted_df, x="Grupo", y='Média', color='Tipo de Pontuação',
+                                barmode='group',
+                                title="Comparativo: Pontuação Média Inicial vs. Final",
+                                labels={'Média': "Pontuação Média", "Grupo": "Grupo", "Tipo de Pontuação": "Tipo"},
+                                text_auto='.2f')
+
+    if fig_pontuacao:
+        st.plotly_chart(fig_pontuacao, use_container_width=True)
+    else:
+        st.warning("Não foi possível gerar o gráfico de pontuação.")
+    # --- FIM DO NOVO GRÁFICO ---
+        
+
     # --- Análise Financeira ---
     st.header("Análise Financeira")
     escolha_financeiro = st.radio(
         "Selecione a visualização financeira:",
         ('Soma Final', 'Soma Inicial', 'Ambas'),
-        horizontal=True
+        horizontal=True,
+        key='financeiro_radio' # Chave única para este conjunto de botões
     )
 
     financeiro_grupos_df = financeiro_df[financeiro_df["Grupo"] != "TOTAL"].copy()
     
-    # Com os nomes das colunas limpos, podemos referenciá-los com segurança
     coluna_soma_final = "Soma Final"
 
-    # Preenchendo dados faltantes de forma inteligente
     if 'Evolução Absoluta' in financeiro_grupos_df.columns and coluna_soma_final in financeiro_grupos_df.columns:
         financeiro_grupos_df[coluna_soma_final].fillna(financeiro_grupos_df['Evolução Absoluta'], inplace=True)
     if 'Soma Inicial' in financeiro_grupos_df.columns and 'Soma Inicial (todos)' in financeiro_grupos_df.columns:
@@ -124,13 +174,14 @@ try:
                                     labels={'Valor': "Valor", "Grupo": "Grupo", "Tipo de Soma": "Tipo"},
                                     text_auto=True)
 
-    if fig_financeiro:
+    if fig_financeiro is not None:
         st.plotly_chart(fig_financeiro, use_container_width=True)
     else:
         st.warning("Não foi possível gerar o gráfico financeiro. Verifique se as colunas necessárias existem e se há dados para a seleção feita.")
 
     # --- Detalhes por Participante ---
     st.header("Detalhes por Participante")
+    st.subheader(f"Exibindo participantes de: {grupo_selecionado}")
     st.dataframe(comparativo_filtrado_df)
 
 except FileNotFoundError:
