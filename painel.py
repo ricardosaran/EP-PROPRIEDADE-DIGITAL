@@ -177,13 +177,7 @@ with tab_perfil:
     perguntas_analise = ['TEM SUCESSÃO FAMILIAR? (JOVENS INSERIDOS NO NEGÓCIO)', 'TEM MULHER NA GESTÃO DA PROPRIEDADE?', 'A PROPRIEDADE TRABALHA COM', 'Potencial para um nível 2 de trabalho?']
     pergunta_selecionada = st.selectbox("Escolha uma característica do perfil para analisar:", perguntas_analise)
     
-    # --- ATUALIZAÇÃO AQUI ---
-    # Lista de perguntas que terão a visualização especial
-    perguntas_especiais = [
-        'Potencial para um nível 2 de trabalho?', 
-        'TEM MULHER NA GESTÃO DA PROPRIEDADE?',
-        'TEM SUCESSÃO FAMILIAR? (JOVENS INSERIDOS NO NEGÓCIO)'
-    ]
+    perguntas_especiais = ['Potencial para um nível 2 de trabalho?', 'TEM MULHER NA GESTÃO DA PROPRIEDADE?', 'TEM SUCESSÃO FAMILIAR? (JOVENS INSERIDOS NO NEGÓCIO)']
     
     if pergunta_selecionada in perguntas_especiais:
         st.subheader(f"Análise Específica: {pergunta_selecionada}")
