@@ -4,7 +4,8 @@ import os
 import numpy as np
 import pandas as pd
 import streamlit as st
-from datetime import datetime 
+from datetime import datetime
+import pytz # <--- ADICIONADO PARA CORRIGIR A HORA
 
 # Plotly
 try:
@@ -56,6 +57,8 @@ mapa_cores_evolucao = {
     'Soma Final': '#2E6D4A'
 }
 NIVEIS_ORDER = ["Básico", "Intermediário", "Avançado"]
+cor_grafico_principal = '#084074'
+
 
 # --------- FUNÇÕES DE ESTILO PLOTLY ---------
 def add_plotly_border(fig: go.Figure, color="#333", width=2, pad=0.004):
@@ -102,42 +105,90 @@ def load_all_data():
 
     return merged_df, niveis_df, financeiro_df, status_df
 
-# ATENÇÃO: Verifique se 'financeiro_df' está sendo retornado e atribuído
 comparativo_df, niveis_df, financeiro_df, status_df = load_all_data()
 
-# ---------- FILTRO LATERAL ÚNICO ----------
+# ================== BLOCO MODIFICADO (FILTRO) ==================
 st.sidebar.title("Filtros")
 
 grupos_disponiveis = sorted(comparativo_df["Grupo"].dropna().unique().tolist())
-grupo_selecionado = st.sidebar.selectbox("Selecione uma cooperativa", ["Todas"] + grupos_disponiveis)
+opcoes_filtro = ["Todas"] + grupos_disponiveis
 
-if grupo_selecionado != "Todas":
-    comparativo_filtrado_df = comparativo_df[comparativo_df["Grupo"] == grupo_selecionado]
-    niveis_filtrado_df = niveis_df[niveis_df["Grupo"] == grupo_selecionado]
-else:
+# Substituído selectbox por multiselect
+selecao_grupos = st.sidebar.multiselect(
+    "Selecione uma ou mais cooperativas:",
+    options=opcoes_filtro,
+    default=["Todas"]
+)
+
+# Lógica de filtragem
+if not selecao_grupos:
+    # Caso 1: Nada selecionado
+    st.sidebar.warning("Selecione pelo menos uma cooperativa.")
+    # Cria DataFrames vazios para evitar erros
+    comparativo_filtrado_df = comparativo_df.iloc[0:0]
+    niveis_filtrado_df = niveis_df.iloc[0:0]
+    financeiro_filtrado_df = financeiro_df.iloc[0:0]
+    texto_selecao = "Nenhuma"
+
+elif "Todas" in selecao_grupos or len(selecao_grupos) == len(grupos_disponiveis):
+    # Caso 2: "Todas" está selecionado ou o usuário selecionou todas manualmente
     comparativo_filtrado_df = comparativo_df.copy()
-    niveis_filtrado_df = niveis_df[niveis_df["Grupo"] == "TOTAL"] if "TOTAL" in niveis_df["Grupo"].values else niveis_df.copy()
+    niveis_filtrado_df = niveis_df[niveis_df["Grupo"] == "TOTAL"].copy()
+    financeiro_filtrado_df = financeiro_df.copy()
+    texto_selecao = "Todas"
 
-# ================== BLOCO MODIFICADO ==================
+else:
+    # Caso 3: Seleção parcial (1 ou mais cooperativas)
+    grupos_para_filtrar = selecao_grupos
+    
+    comparativo_filtrado_df = comparativo_df[comparativo_df["Grupo"].isin(grupos_para_filtrar)].copy()
+    financeiro_filtrado_df = financeiro_df[financeiro_df["Grupo"].isin(grupos_para_filtrar)].copy()
+
+    # Para os níveis, precisamos agregar os dados das cooperativas selecionadas
+    niveis_partial_df = niveis_df[niveis_df["Grupo"].isin(grupos_para_filtrar)].copy()
+    niveis_filtrado_df = niveis_partial_df.groupby("Nível")[["Qtd Inicial", "Qtd Final"]].sum().reset_index()
+    niveis_filtrado_df["Grupo"] = "Seleção" # Coluna "Grupo" genérica para o melt funcionar
+    
+    # Define o texto do subheader
+    if len(grupos_para_filtrar) > 3:
+        texto_selecao = f"{len(grupos_para_filtrar)} cooperativas"
+    else:
+        texto_selecao = ", ".join(grupos_para_filtrar)
+
+# ================== FIM DO BLOCO MODIFICADO ==================
+
+
+# ================== BLOCO MODIFICADO (HORA E LOGO) ==================
 # --------- DATA DE ATUALIZAÇÃO E LOGO ---------
-# O código agora identifica a data de modificação do arquivo Excel
 
-# Define o caminho do arquivo (deve ser o mesmo da função load_all_data)
 excel_file_path = "master_resultados.xlsx"
 try:
     # Pega a data da última modificação do arquivo
     mod_time = os.path.getmtime(excel_file_path)
-    update_time = datetime.fromtimestamp(mod_time)
-    timestamp_str = update_time.strftime("%d/%m/%Y %H:%M:%S")
+    update_time_utc = datetime.fromtimestamp(mod_time, tz=pytz.utc)
+    
+    # Define o fuso horário de São Paulo (BRT, UTC-3)
+    fuso_horario_sp = pytz.timezone("America/Sao_Paulo")
+    
+    # Converte a hora UTC para a hora de São Paulo
+    update_time_local = update_time_utc.astimezone(fuso_horario_sp)
+    
+    timestamp_str = update_time_local.strftime("%d/%m/%Y %H:%M:%S")
+
 except FileNotFoundError:
     timestamp_str = "Arquivo não encontrado"
+except Exception as e:
+    # Pega a hora local como um fallback
+    fuso_horario_sp = pytz.timezone("America/Sao_Paulo")
+    now_local = datetime.now(fuso_horario_sp)
+    timestamp_str = now_local.strftime("%d/%m/%Y %H:%M:%S")
 
-# Criar colunas para alinhar à direita (coluna da esquerda vazia)
-_, col_right = st.columns([3, 1]) # Proporção 3:1 
+
+# Criar colunas para alinhar à direita
+_, col_right = st.columns([3, 1]) 
 
 with col_right:
-    # Criar colunas internas para texto e logo
-    col_text, col_logo = st.columns([2, 1]) # Proporção 2:1 para texto/logo
+    col_text, col_logo = st.columns([2, 1])
     
     with col_text:
         st.markdown(
@@ -153,11 +204,10 @@ with col_right:
     
     with col_logo:
         try:
-            # AVISO: Você precisa ter um arquivo 'logo.png' (ou o nome correto)
-            # na mesma pasta do seu script .py
+            # Nome do arquivo da logo alterado para sebrae.png
             st.image("sebrae.png", width=90)
         except Exception as e:
-            pass # Não mostra nada se o logo falhar
+            pass 
 # ================== FIM DO BLOCO MODIFICADO ==================
 
 
@@ -189,7 +239,7 @@ tab_geral, tab_comparativo, tab_perfil, tab_detalhes = st.tabs(
 with tab_geral:
 
     st.header("Análise Geral")
-    st.subheader(f"Cooperativa selecionado: {grupo_selecionado}")
+    st.subheader(f"Cooperativa selecionada: {texto_selecao}") 
     
     col1, col2, col3 = st.columns(3)
     media_inicial = comparativo_filtrado_df["Pontuação Inicial"].mean()
@@ -203,7 +253,7 @@ with tab_geral:
     with col3: 
         st.markdown(f'<div class="card"><div class="kpi-label">Pontuação Média Final</div><div class="kpi-value">{media_final:.2f}</div></div>', unsafe_allow_html=True)
     
-    st.markdown("---") # Adiciona uma linha horizontal para separar
+    st.markdown("---") 
     
     # ---------------- Gráfico de Níveis ----------------
     
@@ -227,35 +277,31 @@ with tab_geral:
             color="Tipo",
             text="Quantidade",
             barmode="group",
-            title=f"Distribuição de Níveis - {grupo_selecionado}",
+            title=f"Distribuição de Níveis - {texto_selecao}",
             labels={"Quantidade": "Nr. Participantes"},
             color_discrete_map=mapa_cores_evolucao,
             category_orders={"Nível": NIVEIS_ORDER}
         )
 
         fig_niveis.update_traces(
-            texttemplate='%{text:.0f}', # Formata como número inteiro
-            textposition='auto'        # Posição automática (dentro/fora, cor auto)
+            texttemplate='%{text:.0f}',
+            textposition='auto'
         )
         
-        # Remove as linhas de grade do eixo Y (fundo)
         fig_niveis.update_yaxes(showgrid=False)
-        
-        # Coloca os rótulos do eixo X em negrito
         fig_niveis.update_xaxes(tickfont=dict(weight='bold'))
         
-        # Define uma altura fixa para evitar o "esticado"
-        # e aumenta o tamanho da fonte do título
         fig_niveis.update_layout(
-            height=500,  # Altura fixa de 500px
-            title_font_size=20 # Tamanho da fonte do título
+            height=500,
+            title_font_size=20
         )
         
         fig_niveis = style_fig(fig_niveis)
-        
-        # Removido 'use_container_width=True' para que o gráfico
-        # use seu tamanho padrão e não estique mais.
         st.plotly_chart(fig_niveis)
+    
+    else:
+        st.info("Nenhum dado de nível para a seleção atual.")
+
 
 # ==============================================================
 # ---------------- TAB 2 - COMPARATIVO -------------------------
@@ -263,10 +309,11 @@ with tab_geral:
 
 with tab_comparativo:
     st.header("Comparativo de Pontuação Média por Grupo")
+    st.subheader(f"Exibindo resultados para: {texto_selecao}")
 
-    participant_counts = comparativo_df["Grupo"].value_counts()
+    participant_counts = comparativo_filtrado_df["Grupo"].value_counts()
 
-    pontuacao_por_grupo_df = comparativo_df.groupby("Grupo")[["Pontuação Inicial", "Pontuação Final"]]\
+    pontuacao_por_grupo_df = comparativo_filtrado_df.groupby("Grupo")[["Pontuação Inicial", "Pontuação Final"]]\
                                            .mean()\
                                            .reset_index()
 
@@ -276,66 +323,109 @@ with tab_comparativo:
 
     escolha = st.radio("Selecione:", ["Pontuação Final", "Pontuação Inicial", "Ambas"], horizontal=True, key='pontuacao_radio')
 
-    if escolha == "Ambas":
-        melt = pontuacao_por_grupo_df.melt(
-            id_vars=["Grupo", "Grupo_com_contagem"],
-            value_vars=["Pontuação Inicial", "Pontuação Final"],
-            var_name="Tipo",
-            value_name="Valor"
-        )
+    if not pontuacao_por_grupo_df.empty:
+        if escolha == "Ambas":
+            pontuacao_por_grupo_df.sort_values(by="Pontuação Final", ascending=True, inplace=True)
+            
+            melt = pontuacao_por_grupo_df.melt(
+                id_vars=["Grupo", "Grupo_com_contagem"],
+                value_vars=["Pontuação Inicial", "Pontuação Final"],
+                var_name="Tipo",
+                value_name="Valor"
+            )
 
-        fig = px.bar(
-            melt, x="Grupo_com_contagem", y="Valor", color="Tipo",
-            barmode="group", color_discrete_map=mapa_cores_evolucao,
-            title="Comparativo: Pontuação Média Inicial vs. Final",
-            labels={'Valor': "Média da Pontuação", "Grupo_com_contagem": "Grupo", "Tipo": "Tipo"},
-            text_auto='.2f'
-        )
+            fig = px.bar(
+                melt, 
+                x="Valor", y="Grupo_com_contagem",
+                color="Tipo",
+                orientation='h',
+                barmode="group", 
+                color_discrete_map=mapa_cores_evolucao,
+                title="Comparativo: Pontuação Média Inicial vs. Final",
+                labels={'Valor': "Média da Pontuação", "Grupo_com_contagem": "Grupo", "Tipo": "Tipo"},
+                text_auto='.2f'
+            )
+            fig.update_xaxes(showgrid=False)
+        
+        else:
+            dados_plot = pontuacao_por_grupo_df.sort_values(by=escolha, ascending=True)
+
+            fig = px.bar(
+                dados_plot,
+                x=escolha, y="Grupo_com_contagem",
+                orientation='h',
+                title=f"Pontuação Média ({escolha}) por Grupo",
+                labels={escolha: "Pontuação Média", "Grupo_com_contagem": "Grupo"},
+                text_auto='.2f',
+                color_discrete_sequence=[cor_grafico_principal]
+            )
+            fig.update_xaxes(showgrid=False) 
+
+        fig = style_fig(fig)
+        st.plotly_chart(fig, use_container_width=True)
     else:
-        fig = px.bar(
-            pontuacao_por_grupo_df,
-            x="Grupo_com_contagem",
-            y=escolha,
-            title=f"Pontuação Média ({escolha}) por Grupo",
-            labels={escolha: "Pontuação Média", "Grupo_com_contagem": "Grupo"},
-            text_auto='.2f',
-            color_discrete_sequence=[cores_principais[0] if escolha=="Pontuação Final" else cores_principais[1]]
-        )
-
-    fig.update_yaxes(showgrid=False) # Remove linhas de fundo
+        st.info("Nenhum dado de pontuação para a seleção atual.")
     
-    fig = style_fig(fig)
-    st.plotly_chart(fig, use_container_width=True)
+    # --- Análise Financeira ---
     
     st.header("Análise Financeira")
-    financeiro_grupos_df = financeiro_df[financeiro_df["Grupo"] != "TOTAL"].copy()
+    
+    financeiro_grupos_df = financeiro_filtrado_df[financeiro_filtrado_df["Grupo"] != "TOTAL"].copy()
     financeiro_grupos_df['Grupo_com_contagem'] = financeiro_grupos_df['Grupo'].apply(lambda grupo: f"{grupo} (N={participant_counts.get(grupo, 0)})")
     
     escolha_financeiro = st.radio("Selecione a visualização financeira:", ('Soma Final', 'Soma Inicial', 'Ambas'), horizontal=True, key='financeiro_radio')
     
-    coluna_soma_final = "Soma Final"
-    if 'Evolução Absoluta' in financeiro_grupos_df.columns and coluna_soma_final in financeiro_grupos_df.columns:
-        financeiro_grupos_df[coluna_soma_final].fillna(financeiro_grupos_df['Evolução Absoluta'], inplace=True)
-    if 'Soma Inicial' in financeiro_grupos_df.columns and 'Soma Inicial (todos)' in financeiro_grupos_df.columns:
-        financeiro_grupos_df['Soma Inicial'].fillna(financeiro_grupos_df['Soma Inicial (todos)'], inplace=True)
-    
-    if escolha_financeiro == 'Ambas':
-        financeiro_melted_df = financeiro_grupos_df.melt(id_vars=['Grupo', 'Grupo_com_contagem'], value_vars=['Soma Inicial', coluna_soma_final], var_name='Tipo de Soma', value_name='Valor')
-        financeiro_melted_df.dropna(subset=['Valor'], inplace=True)
-        fig_financeiro = px.bar(financeiro_melted_df, x="Grupo_com_contagem", y='Valor', color='Tipo de Soma', barmode='group', title="Comparativo: Soma Inicial vs. Soma Final", labels={'Valor': "Valor", "Grupo_com_contagem": "Grupo", "Tipo de Soma": "Tipo"}, text_auto=True, color_discrete_map=mapa_cores_evolucao)
-    else:
-        coluna_selecionada = 'Soma Final' if escolha_financeiro == 'Soma Final' else 'Soma Inicial'
-        if coluna_selecionada in financeiro_grupos_df.columns:
-            financeiro_grupos_df.dropna(subset=[coluna_selecionada], inplace=True)
-            fig_financeiro = px.bar(financeiro_grupos_df, x="Grupo_com_contagem", y=coluna_selecionada, title=f"{coluna_selecionada} Financeira por Grupo", labels={coluna_selecionada: coluna_selecionada, "Grupo_com_contagem": "Grupo"}, text_auto=True, color_discrete_sequence=[cores_principais[0] if coluna_selecionada == 'Soma Final' else cores_principais[1]])
+    if not financeiro_grupos_df.empty:
+        coluna_soma_final = "Soma Final"
+        if 'Evolução Absoluta' in financeiro_grupos_df.columns and coluna_soma_final in financeiro_grupos_df.columns:
+            financeiro_grupos_df[coluna_soma_final].fillna(financeiro_grupos_df['Evolução Absoluta'], inplace=True)
+        if 'Soma Inicial' in financeiro_grupos_df.columns and 'Soma Inicial (todos)' in financeiro_grupos_df.columns:
+            financeiro_grupos_df['Soma Inicial'].fillna(financeiro_grupos_df['Soma Inicial (todos)'], inplace=True)
+        
+        if escolha_financeiro == 'Ambas':
+            financeiro_grupos_df.sort_values(by=coluna_soma_final, ascending=True, inplace=True)
+            
+            financeiro_melted_df = financeiro_grupos_df.melt(id_vars=['Grupo', 'Grupo_com_contagem'], value_vars=['Soma Inicial', coluna_soma_final], var_name='Tipo de Soma', value_name='Valor')
+            financeiro_melted_df.dropna(subset=['Valor'], inplace=True)
+            
+            fig_financeiro = px.bar(
+                financeiro_melted_df, 
+                x='Valor', y="Grupo_com_contagem",
+                color='Tipo de Soma', 
+                orientation='h',
+                barmode='group', 
+                title="Comparativo: Soma Inicial vs. Soma Final", 
+                labels={'Valor': "Valor", "Grupo_com_contagem": "Grupo", "Tipo de Soma": "Tipo"}, 
+                text_auto=True, 
+                color_discrete_map=mapa_cores_evolucao
+            )
+            fig_financeiro.update_xaxes(showgrid=False)
+        
         else:
-            fig_financeiro = None
+            coluna_selecionada = 'Soma Final' if escolha_financeiro == 'Soma Final' else 'Soma Inicial'
+            if coluna_selecionada in financeiro_grupos_df.columns:
+                
+                dados_plot_fin = financeiro_grupos_df.sort_values(by=coluna_selecionada, ascending=True)
+                dados_plot_fin.dropna(subset=[coluna_selecionada], inplace=True)
+                
+                fig_financeiro = px.bar(
+                    dados_plot_fin, 
+                    x=coluna_selecionada, y="Grupo_com_contagem",
+                    orientation='h',
+                    title=f"{coluna_selecionada} Financeira por Grupo", 
+                    labels={coluna_selecionada: coluna_selecionada, "Grupo_com_contagem": "Grupo"}, 
+                    text_auto=True, 
+                    color_discrete_sequence=[cor_grafico_principal]
+                )
+                fig_financeiro.update_xaxes(showgrid=False)
+            else:
+                fig_financeiro = None
 
-    if fig_financeiro is not None:
-        fig_financeiro.update_yaxes(showgrid=False) # Remove linhas de fundo
-        fig_financeiro = style_fig(fig_financeiro)
-        st.plotly_chart(fig_financeiro, use_container_width=True)
-
+        if fig_financeiro is not None:
+            fig_financeiro = style_fig(fig_financeiro)
+            st.plotly_chart(fig_financeiro, use_container_width=True)
+    else:
+        st.info("Nenhum dado financeiro para a seleção atual.")
 
 # ==============================================================
 # ---------------- TAB 3 - PERFIL ------------------------------
@@ -343,7 +433,7 @@ with tab_comparativo:
 
 with tab_perfil:
     st.header("Análise de Perfil dos Produtores")
-    st.write(f"Analisando o perfil para o grupo: **{grupo_selecionado}**")
+    st.write(f"Analisando o perfil para o grupo: **{texto_selecao}**") 
     
     perguntas_analise = [
         'TEM SUCESSÃO FAMILIAR? (JOVENS INSERIDOS NO NEGÓCIO)', 
@@ -385,7 +475,7 @@ with tab_perfil:
                 fig_niveis_resp = px.bar(niveis_por_resposta, x='Nível Final', y='Contagem', color=pergunta_selecionada, barmode='group', title="Distribuição do Nível Final por Resposta", labels={'Contagem': 'Nr. de Produtores', 'Nível Final': 'Nível Final'}, category_orders={"Nível Final": NIVEIS_ORDER}, color_discrete_map=mapa_cores_sim_nao)
                 fig_niveis_resp.update_traces(texttemplate='%{y}', textposition='outside')
                 
-                fig_niveis_resp.update_yaxes(showgrid=False) # Remove linhas de fundo
+                fig_niveis_resp.update_yaxes(showgrid=False) 
                 
                 fig_niveis_resp = style_fig(fig_niveis_resp)
                 st.plotly_chart(fig_niveis_resp, use_container_width=True)
@@ -410,8 +500,7 @@ with tab_perfil:
             fig_perfil.update_traces(textposition='outside', marker_color=cores_principais[0])
             fig_perfil.update_layout(yaxis_title="Respostas", xaxis_title="Número de Respostas")
             
-            # É 'update_xaxes' pois o gráfico é horizontal
-            fig_perfil.update_xaxes(showgrid=False) # Remove linhas de fundo
+            fig_perfil.update_xaxes(showgrid=False)
             
             fig_perfil = style_fig(fig_perfil)
             st.plotly_chart(fig_perfil, use_container_width=True)
@@ -424,5 +513,5 @@ with tab_perfil:
 
 with tab_detalhes:
     st.header("Detalhes por Participante")
-    st.subheader(f"Exibindo participantes de: {grupo_selecionado}")
+    st.subheader(f"Exibindo participantes de: {texto_selecao}") # <-- Texto atualizado
     st.dataframe(comparativo_filtrado_df)
