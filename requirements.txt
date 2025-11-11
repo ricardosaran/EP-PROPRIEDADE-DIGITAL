@@ -3,5 +3,6 @@ pandas>=2.2
 numpy>=1.26
 openpyxl>=3.1
 plotly>=5.24
+pytz
 # Descomente se precisar abrir arquivos .xls antigos
 # xlrd==1.2.0
