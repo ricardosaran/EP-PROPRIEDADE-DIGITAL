@@ -84,10 +84,9 @@ def style_fig(fig: go.Figure, border_color="#333", border_width=2, pad=0.004) ->
     add_plotly_border(fig, border_color, border_width, pad)
     return fig
 
-# ================== FUNÇÃO ADICIONADA PARA LER A HORA DO ARQUIVO ==================
-# Remove o cache para que o Streamlit verifique a hora do arquivo Excel toda vez
-def get_excel_modification_time():
-    excel_file_path = "master_resultados.xlsx"
+# ================== FUNÇÃO MODIFICADA PARA LER A HORA ==================
+# Lê a hora de modificação do arquivo e já retorna a string formatada
+def get_excel_modification_time_str(excel_file_path="master_resultados.xlsx"):
     fuso_horario_sp = pytz.timezone("America/Sao_Paulo")
     
     try:
@@ -98,17 +97,25 @@ def get_excel_modification_time():
     except FileNotFoundError:
         return "Arquivo não encontrado"
     except Exception:
-        # Fallback para a hora atual de SP se o pytz falhar (o que não deve acontecer)
+        # Fallback para a hora atual de SP se o pytz falhar
         now_local = datetime.now(fuso_horario_sp)
         return now_local.strftime("%d/%m/%Y %H:%M:%S")
 
-# ================== FIM DA FUNÇÃO ADICIONADA ==================
+# Lê a hora de modificação como float (timestamp) para ser usado pelo cache do Streamlit
+def get_excel_modification_timestamp(excel_file_path="master_resultados.xlsx"):
+    try:
+        return os.path.getmtime(excel_file_path)
+    except FileNotFoundError:
+        return 0
+# ================== FIM DA FUNÇÃO MODIFICADA ==================
 
 
-# --------- CARREGAMENTO DE DADOS ---------
+# --------- CARREGAMENTO DE DADOS (AGORA COM PARÂMETRO DE CACHE) ---------
 @st.cache_data
-def load_all_data():
+def load_all_data(file_time): # <-- AGORA ACEITA UM PARÂMETRO
     excel_file_path = "master_resultados.xlsx"
+    # O Streamlit usa o 'file_time' (timestamp do Excel) para saber se deve recarregar ou não!
+    
     comparativo_df = pd.read_excel(excel_file_path, sheet_name="comparativo_master")
     niveis_df = pd.read_excel(excel_file_path, sheet_name="niveis_master")
     financeiro_df = pd.read_excel(excel_file_path, sheet_name="financeiro_master")
@@ -126,7 +133,14 @@ def load_all_data():
 
     return merged_df, niveis_df, financeiro_df, status_df
 
-comparativo_df, niveis_df, financeiro_df, status_df = load_all_data()
+# ================== CARREGAMENTO PRINCIPAL ==================
+# 1. Pega o timestamp do arquivo Excel
+excel_timestamp = get_excel_modification_timestamp()
+
+# 2. Carrega os dados, passando o timestamp como parâmetro de cache
+comparativo_df, niveis_df, financeiro_df, status_df = load_all_data(file_time=excel_timestamp)
+# ================== FIM DO CARREGAMENTO PRINCIPAL ==================
+
 
 # ================== BLOCO MODIFICADO (FILTRO) ==================
 st.sidebar.title("Filtros")
@@ -173,7 +187,8 @@ else:
 # ================== BLOCO MODIFICADO (CHAMADA DA HORA) ==================
 # --------- DATA DE ATUALIZAÇÃO E LOGO ---------
 
-timestamp_str = get_excel_modification_time() # <-- Chama a nova função
+# Chama a função que retorna a STRING formatada (não o timestamp)
+timestamp_str = get_excel_modification_time_str()
 
 # Criar colunas para alinhar à direita
 _, col_right = st.columns([3, 1]) 
