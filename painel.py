@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from datetime import datetime
-import pytz # <--- ADICIONADO PARA CORRIGIR A HORA
+import pytz 
 
 # Plotly
 try:
@@ -84,6 +84,27 @@ def style_fig(fig: go.Figure, border_color="#333", border_width=2, pad=0.004) ->
     add_plotly_border(fig, border_color, border_width, pad)
     return fig
 
+# ================== FUNÇÃO ADICIONADA PARA LER A HORA DO ARQUIVO ==================
+# Remove o cache para que o Streamlit verifique a hora do arquivo Excel toda vez
+def get_excel_modification_time():
+    excel_file_path = "master_resultados.xlsx"
+    fuso_horario_sp = pytz.timezone("America/Sao_Paulo")
+    
+    try:
+        mod_time = os.path.getmtime(excel_file_path)
+        update_time_utc = datetime.fromtimestamp(mod_time, tz=pytz.utc)
+        update_time_local = update_time_utc.astimezone(fuso_horario_sp)
+        return update_time_local.strftime("%d/%m/%Y %H:%M:%S")
+    except FileNotFoundError:
+        return "Arquivo não encontrado"
+    except Exception:
+        # Fallback para a hora atual de SP se o pytz falhar (o que não deve acontecer)
+        now_local = datetime.now(fuso_horario_sp)
+        return now_local.strftime("%d/%m/%Y %H:%M:%S")
+
+# ================== FIM DA FUNÇÃO ADICIONADA ==================
+
+
 # --------- CARREGAMENTO DE DADOS ---------
 @st.cache_data
 def load_all_data():
@@ -113,76 +134,46 @@ st.sidebar.title("Filtros")
 grupos_disponiveis = sorted(comparativo_df["Grupo"].dropna().unique().tolist())
 opcoes_filtro = ["Todas"] + grupos_disponiveis
 
-# Substituído selectbox por multiselect
 selecao_grupos = st.sidebar.multiselect(
     "Selecione uma ou mais cooperativas:",
     options=opcoes_filtro,
     default=["Todas"]
 )
 
-# Lógica de filtragem
 if not selecao_grupos:
-    # Caso 1: Nada selecionado
     st.sidebar.warning("Selecione pelo menos uma cooperativa.")
-    # Cria DataFrames vazios para evitar erros
     comparativo_filtrado_df = comparativo_df.iloc[0:0]
     niveis_filtrado_df = niveis_df.iloc[0:0]
     financeiro_filtrado_df = financeiro_df.iloc[0:0]
     texto_selecao = "Nenhuma"
 
 elif "Todas" in selecao_grupos or len(selecao_grupos) == len(grupos_disponiveis):
-    # Caso 2: "Todas" está selecionado ou o usuário selecionou todas manualmente
     comparativo_filtrado_df = comparativo_df.copy()
     niveis_filtrado_df = niveis_df[niveis_df["Grupo"] == "TOTAL"].copy()
     financeiro_filtrado_df = financeiro_df.copy()
     texto_selecao = "Todas"
 
 else:
-    # Caso 3: Seleção parcial (1 ou mais cooperativas)
     grupos_para_filtrar = selecao_grupos
     
     comparativo_filtrado_df = comparativo_df[comparativo_df["Grupo"].isin(grupos_para_filtrar)].copy()
     financeiro_filtrado_df = financeiro_df[financeiro_df["Grupo"].isin(grupos_para_filtrar)].copy()
 
-    # Para os níveis, precisamos agregar os dados das cooperativas selecionadas
     niveis_partial_df = niveis_df[niveis_df["Grupo"].isin(grupos_para_filtrar)].copy()
     niveis_filtrado_df = niveis_partial_df.groupby("Nível")[["Qtd Inicial", "Qtd Final"]].sum().reset_index()
-    niveis_filtrado_df["Grupo"] = "Seleção" # Coluna "Grupo" genérica para o melt funcionar
+    niveis_filtrado_df["Grupo"] = "Seleção" 
     
-    # Define o texto do subheader
     if len(grupos_para_filtrar) > 3:
         texto_selecao = f"{len(grupos_para_filtrar)} cooperativas"
     else:
         texto_selecao = ", ".join(grupos_para_filtrar)
+# ================== FIM DO BLOCO MODIFICADO (FILTRO) ==================
 
-# ================== FIM DO BLOCO MODIFICADO ==================
 
-
-# ================== BLOCO MODIFICADO (HORA E LOGO) ==================
+# ================== BLOCO MODIFICADO (CHAMADA DA HORA) ==================
 # --------- DATA DE ATUALIZAÇÃO E LOGO ---------
 
-excel_file_path = "master_resultados.xlsx"
-try:
-    # Pega a data da última modificação do arquivo
-    mod_time = os.path.getmtime(excel_file_path)
-    update_time_utc = datetime.fromtimestamp(mod_time, tz=pytz.utc)
-    
-    # Define o fuso horário de São Paulo (BRT, UTC-3)
-    fuso_horario_sp = pytz.timezone("America/Sao_Paulo")
-    
-    # Converte a hora UTC para a hora de São Paulo
-    update_time_local = update_time_utc.astimezone(fuso_horario_sp)
-    
-    timestamp_str = update_time_local.strftime("%d/%m/%Y %H:%M:%S")
-
-except FileNotFoundError:
-    timestamp_str = "Arquivo não encontrado"
-except Exception as e:
-    # Pega a hora local como um fallback
-    fuso_horario_sp = pytz.timezone("America/Sao_Paulo")
-    now_local = datetime.now(fuso_horario_sp)
-    timestamp_str = now_local.strftime("%d/%m/%Y %H:%M:%S")
-
+timestamp_str = get_excel_modification_time() # <-- Chama a nova função
 
 # Criar colunas para alinhar à direita
 _, col_right = st.columns([3, 1]) 
@@ -204,11 +195,10 @@ with col_right:
     
     with col_logo:
         try:
-            # Nome do arquivo da logo alterado para sebrae.png
             st.image("sebrae.png", width=90)
         except Exception as e:
             pass 
-# ================== FIM DO BLOCO MODIFICADO ==================
+# ================== FIM DO BLOCO MODIFICADO (CHAMADA DA HORA) ==================
 
 
 # --------- KPIs ---------
@@ -513,5 +503,5 @@ with tab_perfil:
 
 with tab_detalhes:
     st.header("Detalhes por Participante")
-    st.subheader(f"Exibindo participantes de: {texto_selecao}") # <-- Texto atualizado
+    st.subheader(f"Exibindo participantes de: {texto_selecao}") 
     st.dataframe(comparativo_filtrado_df)
