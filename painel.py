@@ -460,8 +460,8 @@ with tab_comparativo:
                 x="Soma Final", 
                 y="Grupo", 
                 orientation='h',
-                title="Panorama de Adesão Final (Pontuação Acumulada)",
-                labels={"Soma Final": "Pontos de Adesão", "Grupo": "Cooperativa"},
+                title="Panorama do bloco da Gestão Financeira (Pontuação Acumulada)",
+                labels={"Soma Final": "Pontuação", "Grupo": "Cooperativa"},
                 text="Soma Final",
                 color_discrete_sequence=[cor_grafico_principal],
                 hover_data=["Participantes"]
@@ -633,4 +633,5 @@ with tab_perfil:
 with tab_detalhes:
     st.header("Detalhes por Participante")
     st.subheader(f"Exibindo participantes de: {texto_selecao}") 
+
     st.dataframe(comparativo_filtrado_df)
