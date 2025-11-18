@@ -64,7 +64,7 @@ cor_grafico_principal = '#084074'
 # -------------------- ⚠️ DATA DE ATUALIZAÇÃO MANUAL ⚠️ --------------------
 # ==============================================================================
 # ALTERE AQUI A DATA E HORA PARA ATUALIZAR O PAINEL:
-DATA_MANUAL = "17/11/2025 19:00:00" 
+DATA_MANUAL = "17/11/2025 14:42:36" 
 # ==============================================================================
 
 
@@ -635,4 +635,5 @@ with tab_detalhes:
     st.subheader(f"Exibindo participantes de: {texto_selecao}") 
 
     st.dataframe(comparativo_filtrado_df)
+
 
