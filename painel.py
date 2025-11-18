@@ -433,7 +433,7 @@ with tab_comparativo:
     st.markdown("---")
 
     st.header("Análise do bloco de Gestão Financeira da Trilha de adesão")
-    st.markdown("Este bloco analisa o **engajamento e a execução** das funcionalidades do bloco de gestão financeira.")
+    st.markdown("Este bloco analisa o **engajamento** das funcionalidades do bloco de gestão financeira.")
     
     adesao_grupos_df = financeiro_filtrado_df[financeiro_filtrado_df["Grupo"] != "TOTAL"].copy()
     adesao_grupos_df["Participantes"] = adesao_grupos_df["Grupo"].apply(lambda g: participant_counts.get(g,0))
@@ -635,3 +635,4 @@ with tab_detalhes:
     st.subheader(f"Exibindo participantes de: {texto_selecao}") 
 
     st.dataframe(comparativo_filtrado_df)
+
