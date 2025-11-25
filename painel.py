@@ -197,7 +197,7 @@ status_df_filtrado = status_df.copy()
 total_grupos = status_df_filtrado["COOPERATIVA"].nunique()
 total_clientes = status_df_filtrado["Quantidade de clientes"].sum()
 total_finalizados = status_df_filtrado["Finalizados"].sum()
-consultorias_canceladas = 73
+consultorias_canceladas = 56
 percentual_conclusao = (100 * total_finalizados / total_clientes) if total_clientes else 0
 
 k1, k2, k3, k4, k5 = st.columns(5)
@@ -695,4 +695,5 @@ with tab_perfil:
 with tab_detalhes:
     st.header("Detalhes por Participante")
     st.subheader(f"Exibindo participantes de: {texto_selecao}") 
+
     st.dataframe(comparativo_filtrado_df)
