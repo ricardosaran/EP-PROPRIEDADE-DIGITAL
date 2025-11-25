@@ -64,7 +64,7 @@ cor_grafico_principal = '#084074'
 # -------------------- ⚠️ DATA DE ATUALIZAÇÃO MANUAL ⚠️ --------------------
 # ==============================================================================
 # ALTERE AQUI A DATA E HORA PARA ATUALIZAR O PAINEL:
-DATA_MANUAL = "17/11/2025 14:42:36" 
+DATA_MANUAL = "17/11/2025 19:15:00" 
 # ==============================================================================
 
 
@@ -197,7 +197,7 @@ status_df_filtrado = status_df.copy()
 total_grupos = status_df_filtrado["COOPERATIVA"].nunique()
 total_clientes = status_df_filtrado["Quantidade de clientes"].sum()
 total_finalizados = status_df_filtrado["Finalizados"].sum()
-consultorias_canceladas = 56
+consultorias_canceladas = 73
 percentual_conclusao = (100 * total_finalizados / total_clientes) if total_clientes else 0
 
 k1, k2, k3, k4, k5 = st.columns(5)
@@ -307,6 +307,7 @@ with tab_canceladas:
                     text="Quantidade"
                 )
                 
+                # Texto deitado (0 graus) e centralizado
                 fig_cancel.update_traces(
                     textposition='inside', 
                     textfont=dict(weight='bold'),
@@ -361,6 +362,7 @@ with tab_canceladas:
 # ==============================================================
 
 with tab_comparativo:
+    # --- GRÁFICO 1: CONHECIMENTO (PONTUAÇÃO) ---
     st.header("Comparativo de Pontuação Média (Conhecimento)")
     st.subheader(f"Exibindo resultados para: {texto_selecao}")
 
@@ -371,12 +373,14 @@ with tab_comparativo:
     
     pontuacao_por_grupo_df["Participantes"] = pontuacao_por_grupo_df["Grupo"].apply(lambda g: participant_counts.get(g,0))
     
+    # ================== REINSERIDA A OPÇÃO 'EVOLUÇÃO DETALHADA' ==================
     escolha = st.radio(
         "Selecione:", 
-        ["Pontuação Final", "Pontuação Inicial", "Evolução", "Ambas"], 
+        ["Pontuação Final", "Pontuação Inicial", "Evolução", "Evolução Detalhada (Inicial vs. Final)", "Ambas"], 
         horizontal=True, 
         key='pontuacao_radio'
     )
+    # ================== FIM ==================
 
     if not pontuacao_por_grupo_df.empty:
         if escolha == "Ambas":
@@ -403,6 +407,67 @@ with tab_comparativo:
                 hover_data=["Participantes"]
             )
             fig.update_xaxes(showgrid=False)
+
+        # ================== BLOCO REINSERIDO: GRÁFICO DE HALTERES PARA CONHECIMENTO ==================
+        elif escolha == "Evolução Detalhada (Inicial vs. Final)":
+            chart_data = pontuacao_por_grupo_df.sort_values(by="Pontuação Final", ascending=True)
+            
+            fig = go.Figure()
+
+            # Bolinha Inicial
+            fig.add_trace(go.Scatter(
+                x=chart_data["Pontuação Inicial"],
+                y=chart_data["Grupo"],
+                mode='markers+text', 
+                text=chart_data["Pontuação Inicial"].apply(lambda x: f"{x:.2f}"), 
+                textposition='middle left', 
+                textfont=dict(color='black', weight='bold'), 
+                name='Nota Inicial',
+                marker=dict(color='#6AA4D9', size=10),
+                customdata=chart_data["Participantes"],
+                hovertemplate='<b>%{y}</b><br>Inicial: %{x:.2f}<br>Participantes: %{customdata}<extra></extra>'
+            ))
+
+            # Bolinha Final
+            fig.add_trace(go.Scatter(
+                x=chart_data["Pontuação Final"],
+                y=chart_data["Grupo"],
+                mode='markers+text', 
+                text=chart_data["Pontuação Final"].apply(lambda x: f"{x:.2f}"), 
+                textposition='middle right', 
+                textfont=dict(color='black', weight='bold'), 
+                name='Nota Final',
+                marker=dict(color='#084074', size=14),
+                customdata=chart_data["Participantes"],
+                hovertemplate='<b>%{y}</b><br>Final: %{x:.2f}<br>Participantes: %{customdata}<extra></extra>'
+            ))
+
+            for i, row in chart_data.iterrows():
+                fig.add_shape(
+                    type="line",
+                    x0=row["Pontuação Inicial"], y0=row["Grupo"],
+                    x1=row["Pontuação Final"], y1=row["Grupo"],
+                    line=dict(color="gray", width=1)
+                )
+
+            fig.update_layout(
+                title="Pontuação Inicial vs. Final (Detalhado)",
+                xaxis_title="Média de Pontuação",
+                yaxis_title="Cooperativa",
+                height=600,
+                margin=dict(l=0, r=0, t=40, b=0),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                font=dict(color="black")
+            )
+            
+            fig.update_xaxes(showgrid=False, tickfont=dict(color='black', weight='bold'))
+            fig.update_yaxes(showgrid=False, tickfont=dict(color='black', weight='bold'))
+            
+            # Sem borda manual (o style_fig cuida disso)
+            fig = style_fig(fig)
+            st.plotly_chart(fig, use_container_width=True)
+        # ================== FIM DO BLOCO REINSERIDO ==================
+
         else:
             dados_plot = pontuacao_por_grupo_df.sort_values(by=escolha, ascending=True)
             fig = px.bar(
@@ -425,15 +490,17 @@ with tab_comparativo:
             fig.add_vline(x=media_geral, line_width=2, line_dash="dash", line_color="#F2E77F", annotation_text=f"Média: {media_geral:.1f}")
             fig.update_xaxes(showgrid=False) 
 
-        fig = style_fig(fig)
-        st.plotly_chart(fig, use_container_width=True)
+        if escolha != "Evolução Detalhada (Inicial vs. Final)":
+            fig = style_fig(fig)
+            st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Nenhum dado de pontuação para a seleção atual.")
     
     st.markdown("---")
 
+    # --- GRÁFICO 2: ADESÃO À TRILHA ---
     st.header("Análise do bloco de Gestão Financeira da Trilha de adesão")
-    st.markdown("Este bloco analisa o **engajamento** das funcionalidades do bloco de gestão financeira.")
+    st.markdown("Este bloco analisa o **engajamento e a execução** das funcionalidades do bloco de gestão financeira.")
     
     adesao_grupos_df = financeiro_filtrado_df[financeiro_filtrado_df["Grupo"] != "TOTAL"].copy()
     adesao_grupos_df["Participantes"] = adesao_grupos_df["Grupo"].apply(lambda g: participant_counts.get(g,0))
@@ -460,8 +527,8 @@ with tab_comparativo:
                 x="Soma Final", 
                 y="Grupo", 
                 orientation='h',
-                title="Panorama do bloco da Gestão Financeira (Pontuação Acumulada)",
-                labels={"Soma Final": "Pontuação", "Grupo": "Cooperativa"},
+                title="Panorama de Adesão Final (Pontuação Acumulada)",
+                labels={"Soma Final": "Pontos de Adesão", "Grupo": "Cooperativa"},
                 text="Soma Final",
                 color_discrete_sequence=[cor_grafico_principal],
                 hover_data=["Participantes"]
@@ -506,13 +573,11 @@ with tab_comparativo:
             fig_adesao = style_fig(fig_adesao)
             st.plotly_chart(fig_adesao, use_container_width=True)
 
-        # ================== MUDANÇA: AJUSTE DO HOVER ==================
         elif escolha_adesao == 'Evolução Detalhada (Inicial vs. Final)':
             chart_data = adesao_grupos_df.sort_values(by="Soma Final", ascending=True)
             
             fig_adesao = go.Figure()
 
-            # Bolinha Inicial
             fig_adesao.add_trace(go.Scatter(
                 x=chart_data["Soma Inicial"],
                 y=chart_data["Grupo"],
@@ -522,12 +587,10 @@ with tab_comparativo:
                 textfont=dict(color='black', weight='bold'), 
                 name='Adesão Inicial',
                 marker=dict(color='#6AA4D9', size=10),
-                # AQUI ADICIONAMOS O CUSTOM DATA PARA O HOVER
                 customdata=chart_data["Participantes"],
                 hovertemplate='<b>%{y}</b><br>Inicial: %{x:.0f}<br>Participantes: %{customdata}<extra></extra>'
             ))
 
-            # Bolinha Final
             fig_adesao.add_trace(go.Scatter(
                 x=chart_data["Soma Final"],
                 y=chart_data["Grupo"],
@@ -537,11 +600,9 @@ with tab_comparativo:
                 textfont=dict(color='black', weight='bold'), 
                 name='Adesão Final',
                 marker=dict(color='#084074', size=14),
-                # AQUI TAMBÉM
                 customdata=chart_data["Participantes"],
                 hovertemplate='<b>%{y}</b><br>Final: %{x:.0f}<br>Participantes: %{customdata}<extra></extra>'
             ))
-        # ================== FIM DA MUDANÇA ==================
 
             for i, row in chart_data.iterrows():
                 fig_adesao.add_shape(
@@ -561,10 +622,11 @@ with tab_comparativo:
                 font=dict(color="black")
             )
             
-            # Mantém a borda padrão do estilo (style_fig) mas remove a duplicidade manual
+            # Remove a grade e garante fonte preta, SEM borda manual extra
             fig_adesao.update_xaxes(showgrid=False, tickfont=dict(color='black', weight='bold'))
             fig_adesao.update_yaxes(showgrid=False, tickfont=dict(color='black', weight='bold'))
             
+            # A borda agora vem apenas da função style_fig
             fig_adesao = style_fig(fig_adesao)
             st.plotly_chart(fig_adesao, use_container_width=True)
 
@@ -633,7 +695,4 @@ with tab_perfil:
 with tab_detalhes:
     st.header("Detalhes por Participante")
     st.subheader(f"Exibindo participantes de: {texto_selecao}") 
-
     st.dataframe(comparativo_filtrado_df)
-
-
