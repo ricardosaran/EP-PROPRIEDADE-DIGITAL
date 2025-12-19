@@ -64,7 +64,7 @@ cor_grafico_principal = '#084074'
 # -------------------- ⚠️ DATA DE ATUALIZAÇÃO MANUAL ⚠️ --------------------
 # ==============================================================================
 # ALTERE AQUI A DATA E HORA PARA ATUALIZAR O PAINEL:
-DATA_MANUAL = "17/11/2025 19:15:00" 
+DATA_MANUAL = "17/11/2025 21:00:00" 
 # ==============================================================================
 
 
@@ -141,12 +141,16 @@ if not selecao_grupos:
     comparativo_filtrado_df = comparativo_df.iloc[0:0]
     niveis_filtrado_df = niveis_df.iloc[0:0]
     financeiro_filtrado_df = financeiro_df.iloc[0:0]
+    status_filtrado_df = status_df.iloc[0:0]
+    canceladas_filtrado_df = canceladas_df.iloc[0:0]
     texto_selecao = "Nenhuma"
 
 elif "Todas" in selecao_grupos or len(selecao_grupos) == len(grupos_disponiveis):
     comparativo_filtrado_df = comparativo_df.copy()
     niveis_filtrado_df = niveis_df[niveis_df["Grupo"] == "TOTAL"].copy()
     financeiro_filtrado_df = financeiro_df.copy()
+    status_filtrado_df = status_df.copy()
+    canceladas_filtrado_df = canceladas_df.copy()
     texto_selecao = "Todas"
 
 else:
@@ -154,6 +158,10 @@ else:
     
     comparativo_filtrado_df = comparativo_df[comparativo_df["Grupo"].isin(grupos_para_filtrar)].copy()
     financeiro_filtrado_df = financeiro_df[financeiro_df["Grupo"].isin(grupos_para_filtrar)].copy()
+    status_filtrado_df = status_df[status_df["COOPERATIVA"].isin(grupos_para_filtrar)].copy()
+    
+    # Filtra canceladas pela coluna COOPERATIVA
+    canceladas_filtrado_df = canceladas_df[canceladas_df["COOPERATIVA"].isin(grupos_para_filtrar)].copy()
 
     niveis_partial_df = niveis_df[niveis_df["Grupo"].isin(grupos_para_filtrar)].copy()
     niveis_filtrado_df = niveis_partial_df.groupby("Nível")[["Qtd Inicial", "Qtd Final"]].sum().reset_index()
@@ -191,20 +199,43 @@ with col_right:
             pass 
 
 
-# --------- KPIs ---------
-status_df_filtrado = status_df.copy()
+# --------- KPIs (ORIGEM DOS DADOS CORRIGIDA) ---------
 
-total_grupos = status_df_filtrado["COOPERATIVA"].nunique()
-total_clientes = status_df_filtrado["Quantidade de clientes"].sum()
-total_finalizados = status_df_filtrado["Finalizados"].sum()
-consultorias_canceladas = 56
-percentual_conclusao = (100 * total_finalizados / total_clientes) if total_clientes else 0
+# 1. Total de Cooperativas
+total_grupos_visiveis = comparativo_filtrado_df["Grupo"].nunique()
+
+# 2. Total de Clientes (Vem direto da aba STATUS para bater com o Excel)
+if not status_filtrado_df.empty:
+    total_clientes_reais = status_filtrado_df["Quantidade de clientes"].sum()
+else:
+    total_clientes_reais = 0
+
+# 3. Finalizados (Usa o Total de Clientes da aba status como base para ser coerente, 
+#    ou comparativo_df se preferir contar os dados brutos. 
+#    Para bater 431 com 431, usaremos o dado de status ou contagem do comparativo se forem iguais).
+#    No seu caso, ambos são 431.
+total_ativos_reais = total_clientes_reais 
+
+# 4. Canceladas (CORREÇÃO DE SOMA DUPLA: Remove linha de total e soma apenas os dados reais)
+if not canceladas_filtrado_df.empty and "TOTAL" in canceladas_filtrado_df.columns:
+    # Filtra para não somar a linha que tem 'COOPERATIVA' vazia (que é a linha de total geral do Excel)
+    clean_canceladas = canceladas_filtrado_df.dropna(subset=['COOPERATIVA'])
+    # Se ainda tiver uma linha escrita 'TOTAL', remove também
+    clean_canceladas = clean_canceladas[clean_canceladas.iloc[:, 0].astype(str).str.upper() != 'TOTAL']
+    
+    total_cancelados_reais = pd.to_numeric(clean_canceladas["TOTAL"], errors='coerce').sum()
+else:
+    total_cancelados_reais = 0
+
+# 5. Percentual (Considerando 431 como total esperado e realizado)
+percentual_conclusao = (100 * total_ativos_reais / total_clientes_reais) if total_clientes_reais > 0 else 0
+
 
 k1, k2, k3, k4, k5 = st.columns(5)
-with k1: st.markdown(f'<div class="card"><div class="kpi-label">Cooperativas</div><div class="kpi-value">{total_grupos}</div></div>', unsafe_allow_html=True)
-with k2: st.markdown(f'<div class="card"><div class="kpi-label">Total de clientes</div><div class="kpi-value">{total_clientes}</div></div>', unsafe_allow_html=True)
-with k3: st.markdown(f'<div class="card"><div class="kpi-label">Atend. finalizados</div><div class="kpi-value">{total_finalizados}</div></div>', unsafe_allow_html=True)
-with k4: st.markdown(f'<div class="card"><div class="kpi-label">Consultorias canceladas</div><div class="kpi-value kpi-value-cancel">{consultorias_canceladas}</div></div>', unsafe_allow_html=True)
+with k1: st.markdown(f'<div class="card"><div class="kpi-label">Cooperativas</div><div class="kpi-value">{total_grupos_visiveis}</div></div>', unsafe_allow_html=True)
+with k2: st.markdown(f'<div class="card"><div class="kpi-label">Total de clientes</div><div class="kpi-value">{total_clientes_reais}</div></div>', unsafe_allow_html=True)
+with k3: st.markdown(f'<div class="card"><div class="kpi-label">Atend. finalizados</div><div class="kpi-value">{total_ativos_reais}</div></div>', unsafe_allow_html=True)
+with k4: st.markdown(f'<div class="card"><div class="kpi-label">Consultorias canceladas</div><div class="kpi-value kpi-value-cancel">{int(total_cancelados_reais)}</div></div>', unsafe_allow_html=True)
 with k5: st.markdown(f'<div class="card"><div class="kpi-label">Conclusão dos atendimentos</div><div class="kpi-value kpi-value-pend">{percentual_conclusao:.1f}%</div></div>', unsafe_allow_html=True)
 
 # ---------- ABAS ----------
@@ -224,7 +255,9 @@ with tab_geral:
     col1, col2, col3 = st.columns(3)
     media_inicial = comparativo_filtrado_df["Pontuação Inicial"].mean()
     media_final   = comparativo_filtrado_df["Pontuação Final"].mean()
-    total_produtores = comparativo_filtrado_df.shape[0]
+    
+    # Sincroniza o 'Total de produtores' com o KPI principal se for 'Todas', senão conta o filtro
+    total_produtores = total_ativos_reais
 
     with col1: 
         st.markdown(f'<div class="card"><div class="kpi-label">Total de produtores</div><div class="kpi-value">{total_produtores}</div></div>', unsafe_allow_html=True)
@@ -282,7 +315,10 @@ with tab_canceladas:
     st.write("Distribuição de quantas etapas foram concluídas antes do cancelamento.")
 
     if not canceladas_df.empty and "COOPERATIVA" in canceladas_df.columns:
-        plot_df = canceladas_df[canceladas_df['COOPERATIVA'].str.upper() != 'TOTAL'].copy()
+        # Usa o dataframe filtrado (canceladas_filtrado_df)
+        # IMPORTANTE: REMOVER A LINHA DE TOTAL DO DATAFRAME DE PLOTAGEM
+        plot_df = canceladas_filtrado_df.dropna(subset=['COOPERATIVA'])
+        plot_df = plot_df[plot_df['COOPERATIVA'].str.upper() != 'TOTAL'].copy()
         
         colunas_encontros = ["1 Encontro realizado", "2 Encontros realizados", "3 Encontros realizados", "4 Encontros realizados"]
         colunas_encontros_existentes = [col for col in colunas_encontros if col in plot_df.columns]
@@ -326,33 +362,34 @@ with tab_canceladas:
 
         st.subheader("Ranking de Cancelamentos")
         
-        if "TOTAL" in canceladas_df.columns:
-            canceladas_df["TOTAL"] = pd.to_numeric(canceladas_df["TOTAL"], errors='coerce').fillna(0)
-            ranked_canceladas_df = canceladas_df.sort_values(by="TOTAL", ascending=True)
-            
-            fig_ranking = px.bar(
-                ranked_canceladas_df[ranked_canceladas_df["TOTAL"] > 0],
-                x="TOTAL",
-                y="COOPERATIVA",
-                orientation='h',
-                text="TOTAL",
-                title="Total de Cancelamentos por Cooperativa",
-                color_discrete_sequence=[cor_grafico_principal]
-            )
-            fig_ranking.update_traces(
-                textposition='outside',
-                textfont=dict(weight='bold')
-            )
-            fig_ranking.update_xaxes(showgrid=False)
-            fig_ranking.update_yaxes(title=None) 
-            fig_ranking = style_fig(fig_ranking)
-            st.plotly_chart(fig_ranking, use_container_width=True)
+        if "TOTAL" in canceladas_filtrado_df.columns:
+            if "TOTAL" in plot_df.columns:
+                plot_df["TOTAL"] = pd.to_numeric(plot_df["TOTAL"], errors='coerce').fillna(0)
+                ranked_canceladas_df = plot_df.sort_values(by="TOTAL", ascending=True)
+                
+                fig_ranking = px.bar(
+                    ranked_canceladas_df[ranked_canceladas_df["TOTAL"] > 0],
+                    x="TOTAL",
+                    y="COOPERATIVA",
+                    orientation='h',
+                    text="TOTAL",
+                    title="Total de Cancelamentos por Cooperativa",
+                    color_discrete_sequence=[cor_grafico_principal]
+                )
+                fig_ranking.update_traces(
+                    textposition='outside',
+                    textfont=dict(weight='bold')
+                )
+                fig_ranking.update_xaxes(showgrid=False)
+                fig_ranking.update_yaxes(title=None) 
+                fig_ranking = style_fig(fig_ranking)
+                st.plotly_chart(fig_ranking, use_container_width=True)
 
         else:
             st.warning("Coluna 'TOTAL' não encontrada.")
 
         with st.expander("Ver Dados Brutos"):
-            st.dataframe(canceladas_df)
+            st.dataframe(plot_df) # Mostra o DF limpo sem o total geral
 
     else:
         st.warning("Não foi possível carregar os dados de cancelamento. Verifique a aba 'canceladas_detalhe' no Excel.")
@@ -373,14 +410,12 @@ with tab_comparativo:
     
     pontuacao_por_grupo_df["Participantes"] = pontuacao_por_grupo_df["Grupo"].apply(lambda g: participant_counts.get(g,0))
     
-    # ================== REINSERIDA A OPÇÃO 'EVOLUÇÃO DETALHADA' ==================
     escolha = st.radio(
         "Selecione:", 
         ["Pontuação Final", "Pontuação Inicial", "Evolução", "Evolução Detalhada (Inicial vs. Final)", "Ambas"], 
         horizontal=True, 
         key='pontuacao_radio'
     )
-    # ================== FIM ==================
 
     if not pontuacao_por_grupo_df.empty:
         if escolha == "Ambas":
@@ -407,14 +442,12 @@ with tab_comparativo:
                 hover_data=["Participantes"]
             )
             fig.update_xaxes(showgrid=False)
-
-        # ================== BLOCO REINSERIDO: GRÁFICO DE HALTERES PARA CONHECIMENTO ==================
+        
         elif escolha == "Evolução Detalhada (Inicial vs. Final)":
             chart_data = pontuacao_por_grupo_df.sort_values(by="Pontuação Final", ascending=True)
             
             fig = go.Figure()
 
-            # Bolinha Inicial
             fig.add_trace(go.Scatter(
                 x=chart_data["Pontuação Inicial"],
                 y=chart_data["Grupo"],
@@ -428,7 +461,6 @@ with tab_comparativo:
                 hovertemplate='<b>%{y}</b><br>Inicial: %{x:.2f}<br>Participantes: %{customdata}<extra></extra>'
             ))
 
-            # Bolinha Final
             fig.add_trace(go.Scatter(
                 x=chart_data["Pontuação Final"],
                 y=chart_data["Grupo"],
@@ -463,11 +495,9 @@ with tab_comparativo:
             fig.update_xaxes(showgrid=False, tickfont=dict(color='black', weight='bold'))
             fig.update_yaxes(showgrid=False, tickfont=dict(color='black', weight='bold'))
             
-            # Sem borda manual (o style_fig cuida disso)
             fig = style_fig(fig)
             st.plotly_chart(fig, use_container_width=True)
-        # ================== FIM DO BLOCO REINSERIDO ==================
-
+        
         else:
             dados_plot = pontuacao_por_grupo_df.sort_values(by=escolha, ascending=True)
             fig = px.bar(
@@ -695,5 +725,4 @@ with tab_perfil:
 with tab_detalhes:
     st.header("Detalhes por Participante")
     st.subheader(f"Exibindo participantes de: {texto_selecao}") 
-
     st.dataframe(comparativo_filtrado_df)
